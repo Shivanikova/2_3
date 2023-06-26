@@ -39,14 +39,17 @@
    INNER JOIN public.books AS b ON re.book_id = b.book_id
    WHERE actual_return_date ISNULL
    ORDER BY book_id
-
--- 5. Вывести количество должников на текущую дату.
  
-   SELECT count(b.book_id)
-   FROM public.readers AS rd 
-   INNER JOIN public.rent AS re ON rd.ticket_number = re.ticket_number
-   INNER JOIN public.books AS b ON re.book_id = b.book_id
-   WHERE actual_return_date ISNULL AND current_date > return_date
+-- 5. Вывести количество должников на текущую дату.
+-- Должником является читатель, который не возвратил книгу в течение 2-х недель.
+ 
+   WITH books_last_date as (SELECT b.book_id, return_date, return_date + interval '14 DAY' as last_date
+                            FROM public.readers AS rd 
+                            INNER JOIN public.rent AS re ON rd.ticket_number = re.ticket_number
+                            INNER JOIN public.books AS b ON re.book_id = b.book_id
+                            WHERE actual_return_date ISNULL)
+   SELECT count(book_id) FROM books_last_date
+   WHERE current_date > last_date
 
 -- 6. Книги какого издательства были самыми востребованными у читателей? Отсортируйте издательства по убыванию востребованности книг.
 
@@ -75,6 +78,7 @@
    ORDER BY author_id
 
 -- 8. Определить среднее количество прочитанных страниц читателем за день.
+-- Книга считается прочитанной, если она была взята и сдана.
 
  WITH all_read AS (SELECT
                    b.sheets/(re.actual_return_date - re.date_of_issue) AS number_of_sheets_per_day, 
