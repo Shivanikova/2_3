@@ -1,0 +1,89 @@
+-- Задание
+-- Написать sql-запросы к БД «Библиотека», которые позволяют получить следующую информацию:
+
+-- 1. Определить, сколько книг прочитал каждый читатель в текущем году. Вывести рейтинг читателей по убыванию.
+
+    SELECT rd.ticket_number, last_name, firts_name, middle_name, COUNT(book_id) AS count_books 
+    FROM public.readers AS rd
+    INNER JOIN public.rent AS re ON rd.ticket_number = re.ticket_number 
+    WHERE actual_return_date > '2023-01-01'
+    GROUP BY rd.ticket_number, last_name, firts_name, middle_name 
+    ORDER BY count_books desc, ticket_number;
+
+-- 2. Определить, сколько книг у читателей на руках на текущую дату.
+
+   WITH actual_readers AS (SELECT rd.ticket_number, last_name, firts_name, middle_name, book_id, count(book_id) AS count_books_by_every_reader 
+                           FROM public.readers AS rd
+                           INNER JOIN public.rent AS re ON rd.ticket_number = re.ticket_number
+                           WHERE actual_return_date ISNULL
+                           GROUP BY book_id, rd.ticket_number, last_name, firts_name, middle_name)
+   SELECT ticket_number, last_name, firts_name, middle_name, actual_readers.count_books_by_every_reader,
+          SUM(actual_readers.count_books_by_every_reader) 
+   OVER() AS count_books_all_readers FROM actual_readers
+   ORDER BY actual_readers.count_books_by_every_reader DESC;
+
+-- 3. Определить читателей, у которых на руках определенная книга.
+
+   SELECT rd.ticket_number, last_name, firts_name, middle_name, re.book_id, name, re.date_of_issue 
+   FROM public.readers AS rd 
+   INNER JOIN public.rent AS re ON rd.ticket_number = re.ticket_number
+   INNER JOIN public.books AS b ON re.book_id = b.book_id
+   WHERE actual_return_date ISNULL
+   ORDER BY date_of_issue
+
+-- 4. Определите, какие книги на руках читателей.
+
+   SELECT re.book_id, name, re.date_of_issue, rd.ticket_number, last_name, firts_name, middle_name   
+   FROM public.readers AS rd 
+   INNER JOIN public.rent AS re ON rd.ticket_number = re.ticket_number
+   INNER JOIN public.books AS b ON re.book_id = b.book_id
+   WHERE actual_return_date ISNULL
+   ORDER BY book_id
+
+-- 5. Вывести количество должников на текущую дату.
+ 
+   SELECT count(b.book_id)
+   FROM public.readers AS rd 
+   INNER JOIN public.rent AS re ON rd.ticket_number = re.ticket_number
+   INNER JOIN public.books AS b ON re.book_id = b.book_id
+   WHERE actual_return_date ISNULL AND current_date > return_date
+
+-- 6. Книги какого издательства были самыми востребованными у читателей? Отсортируйте издательства по убыванию востребованности книг.
+
+   SELECT p.publisher_id, p.name, count(re.date_of_issue) AS count_readers  FROM public.rent AS re 
+   INNER JOIN public.books AS b ON re.book_id = b.book_id 
+   INNER JOIN public.publisher AS p ON b.publisher_id = p.publisher_id 
+   GROUP BY p.publisher_id, p.name
+   ORDER BY count_readers DESC
+
+-- 7. Определить самого издаваемого автора.
+
+  WITH max_published_author AS 
+       (WITH all_authors AS 
+            (SELECT a.author_id, a.last_name, a.first_name, a.middle_name, COUNT(date_of_issue) AS count_books 
+             FROM public.books AS b 
+             INNER JOIN public.books_authors AS ba ON b.book_id = ba.book_id 
+             INNER JOIN public.authors AS a ON a.author_id = ba.author_id 
+             GROUP BY a.author_id, a.first_name, a.last_name, a.middle_name
+             ORDER BY count_books DESC)
+        SELECT all_authors.author_id, all_authors.last_name, all_authors.first_name, all_authors.middle_name,   all_authors.count_books, 
+        max(count_books)
+        over() as max_published_author 
+        from all_authors)
+   SELECT author_id, last_name, first_name, middle_name FROM max_published_author
+   WHERE count_books = max_published_author
+   ORDER BY author_id
+
+-- 8. Определить среднее количество прочитанных страниц читателем за день.
+
+ WITH all_read AS (SELECT
+                   b.sheets/(re.actual_return_date - re.date_of_issue) AS number_of_sheets_per_day, 
+                   r.ticket_number, r.last_name, r.firts_name, r.middle_name
+                   FROM rent AS re INNER JOIN books AS b ON b.book_id = re.book_id 
+                                   INNER JOIN readers AS r ON r.ticket_number = re.ticket_number
+                   WHERE actual_return_date NOTNULL AND actual_return_date - re.date_of_issue > 0
+                   ORDER BY ticket_number)
+ SELECT  ticket_number, last_name, firts_name, middle_name, AVG(number_of_sheets_per_day) AS avg_sheets_per_day FROM all_read
+ GROUP BY ticket_number, last_name, firts_name, middle_name
+ ORDER BY avg_sheets_per_day DESC
+
